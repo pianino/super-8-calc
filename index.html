@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SUPER 8 CALC - Milton Precision</title>
+    <style>
+        :root { --case: #cfcfc0; --lcd: #9ba88d; --goma: #333; --text: #eee; }
+        body { background-color: #121212; margin: 0; height: 100vh; display: flex; justify-content: center; align-items: center; font-family: 'Courier New', Courier, monospace; touch-action: manipulation; overflow: hidden; }
+        .calc-body { background-color: var(--case); width: 90vw; max-width: 340px; padding: 25px; border-radius: 20px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); border: 1px solid #999; }
+        .brand { text-align: center; font-size: 1.6rem; font-weight: 900; color: #2c3e50; font-style: italic; margin:0; }
+        .model { text-align: center; font-size: 0.7rem; color: #555; margin-bottom: 15px; }
+        .lcd-container { background-color: var(--lcd); height: 80px; border: 5px inset #777; margin-bottom: 25px; display: flex; justify-content: flex-end; align-items: center; padding: 0 15px; font-size: 3rem; color: rgba(0,0,0,0.85); box-shadow: inset 4px 4px 10px rgba(0,0,0,0.4); overflow: hidden; }
+        .btn-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+        button { height: 55px; background-color: var(--goma); color: var(--text); border: none; border-radius: 12px; font-size: 1.2rem; font-weight: bold; box-shadow: 0 5px #000; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        button:active { transform: translateY(4px); box-shadow: 0 1px #000; }
+        .red { background-color: #a93226; } .op { background-color: #444; color: #f1c40f; } .eq { background-color: #2c3e50; color: #fff; }
+    </style>
+</head>
+<body>
+
+<div class="calc-body">
+    <div class="brand">WALINTRON</div>
+    <div class="model">SUPER 8 CALC / MONO CHIP vFinal</div>
+    <div class="lcd-container" id="screen">0</div>
+    <div class="btn-grid" id="pad">
+        <button class="red" data-key="on">ON</button>
+        <button class="red" data-key="off">OFF</button>
+        <button class="op" data-key="sqrt">√</button>
+        <button class="op" data-key="/">/</button>
+        <button data-key="7">7</button><button data-key="8">8</button><button data-key="9">9</button>
+        <button class="op" data-key="*">×</button>
+        <button data-key="4">4</button><button data-key="5">5</button><button data-key="6">6</button>
+        <button class="op" data-key="-">-</button>
+        <button data-key="1">1</button><button data-key="2">2</button><button data-key="3">3</button>
+        <button class="op" data-key="+">+</button>
+        <button data-key="0">0</button><button data-key=".">.</button>
+        <button class="op" data-key="%">%</button>
+        <button class="eq" data-key="=">=</button>
+    </div>
+</div>
+
+<script>
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let osc = null, gain = null, isOn = false;
+    let currentInput = "0", bufferVal = null, lastOp = null, lastOperand = null;
+    const tempo = 0.197;
+
+    const freqs = { '.': 440, '-': 440, '0': 493.88, '1': 523.25, '2': 587.33, '3': 659.25, '4': 698.46, '5': 783.99, '6': 880, '7': 987.77, '8': 1046.5, '9': 1174.66, 'op': 2093 };
+
+    function initChip() {
+        if (osc) return;
+        osc = audioCtx.createOscillator(); gain = audioCtx.createGain();
+        osc.type = 'square'; osc.frequency.setValueAtTime(0, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0, audioCtx.currentTime);
+        osc.connect(gain); gain.connect(audioCtx.destination);
+        osc.start();
+    }
+
+    function playMono(f, timeOffset = 0) {
+        if (!isOn || !f) return;
+        const startTime = audioCtx.currentTime + timeOffset;
+        gain.gain.cancelScheduledValues(startTime);
+        osc.frequency.setValueAtTime(f, startTime);
+        gain.gain.setValueAtTime(0.2, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, startTime + 1.5);
+    }
+
+    function runMusicalSequence(resStr) {
+        const screen = document.getElementById("screen");
+        screen.innerText = "";
+        let displayStr = "";
+        const chars = resStr.split("");
+        chars.forEach((char, i) => {
+            setTimeout(() => {
+                if(!isOn) return;
+                playMono(freqs[char] || 440);
+                displayStr += char;
+                screen.innerText = displayStr;
+            }, i * tempo * 1000);
+        });
+    }
+
+    function calculate() {
+        if (!isOn) return;
+        let a = parseFloat(bufferVal);
+        let b = parseFloat(currentInput);
+        let op = lastOp;
+
+        if (bufferVal === null && lastOperand !== null) {
+            a = parseFloat(currentInput);
+            b = parseFloat(lastOperand);
+            op = lastOp;
+        }
+
+        if (op === null) return;
+
+        try {
+            let res;
+            if (op === '+') res = a + b;
+            if (op === '-') res = a - b;
+            if (op === '*') res = a * b;
+            if (op === '/') res = a / b;
+
+            let resStr = res.toString();
+            if (resStr.length > 8 || !isFinite(res)) throw "err";
+
+            lastOperand = b;
+            bufferVal = null;
+            currentInput = resStr;
+            runMusicalSequence(resStr);
+        } catch {
+            playMono(493.88);
+            setTimeout(() => playMono(1396.91), 500);
+            document.getElementById("screen").innerText = "1." + Math.floor(Math.random()*900000);
+            currentInput = "0"; bufferVal = null; lastOp = null; lastOperand = null;
+        }
+    }
+
+    document.getElementById("pad").addEventListener('pointerdown', (e) => {
+        const k = e.target.dataset.key; if (!k) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        initChip();
+
+        if (k === 'on') {
+            isOn = true; currentInput = "0"; bufferVal = null; lastOp = null; lastOperand = null;
+            document.getElementById("screen").innerText = "0";
+            [880, 698.46, 880, 698.46].forEach((f, i) => playMono(f, i * tempo));
+            return;
+        }
+        if (!isOn || k === 'off') { isOn = false; document.getElementById("screen").innerText = ""; return; }
+
+        if (k === '=') { calculate(); return; }
+
+        if (['+', '-', '*', '/'].includes(k)) {
+            playMono(2093);
+            bufferVal = currentInput;
+            lastOp = k;
+            currentInput = "0";
+            return;
+        }
+
+        playMono(freqs[k]);
+        if (currentInput === "0" && k !== '.') currentInput = k;
+        else currentInput += k;
+        document.getElementById("screen").innerText = currentInput;
+    });
+
+    window.addEventListener('keydown', (e) => {
+        // Soporte para tecla "Enter" (Normal y Numpad)
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (isOn) calculate();
+            return;
+        }
+
+        if (e.key === 'Home') {
+            document.querySelector('[data-key="on"]').dispatchEvent(new PointerEvent('pointerdown'));
+            return;
+        }
+
+        if (!isOn) return;
+
+        let k = e.key;
+        if (freqs[k] && k !== 'op') { 
+            playMono(freqs[k]); 
+            currentInput = (currentInput === "0" && k !== '.') ? k : currentInput + k; 
+            document.getElementById("screen").innerText = currentInput; 
+        }
+        if (['+', '-', '*', '/'].includes(k)) { 
+            e.preventDefault(); 
+            playMono(2093); 
+            bufferVal = currentInput; 
+            lastOp = k; 
+            currentInput = "0"; 
+        }
+        if (k === '=') { e.preventDefault(); calculate(); }
+        if (k === 'Backspace') { 
+            currentInput = "0"; 
+            document.getElementById("screen").innerText = "0"; 
+            playMono(2093); 
+        }
+    });
+</script>
+</body>
+</html>
